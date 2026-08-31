@@ -858,7 +858,6 @@ def compare_accuracy_groups(subject_bands, dimension="condition"):
 
     # Post-hoc pairwise with Bonferroni
     if kw_p < 0.05:
-        from itertools import combinations
         n_tests = len(list(combinations(groups, 2)))
         for g1, g2 in combinations(groups, 2):
             u_stat, u_p = scipy_stats.mannwhitneyu(group_data[g1], group_data[g2], alternative='two-sided')
@@ -1785,7 +1784,6 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
         }
     except Exception as e:
         results["mediation_error"] = str(e)
-                             -
     results["standardized_paths"] = _standardized_paths(stress_vals, theta_vals, recall_vals)
 
     # Condition-controlled b-path, added: exploratory robustness check, 
