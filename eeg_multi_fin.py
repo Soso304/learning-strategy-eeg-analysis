@@ -25,34 +25,35 @@ import json
 import gc
 from itertools import combinations
 
-# =============================================================================
-# PARTICIPANT METADATA
-# =============================================================================
-# Metadata is now loaded dynamically from the behavioral CSV instead of a
-# hardcoded dict. The CSV must have (at minimum) these columns:
-#   Participant_number : integer participant ID (matches the number in the
-#                         EEG filename, e.g. 1 -> "01rec1.vhdr")
-#   Condition           : one of "control" | "SWA-ENG" | "ENG-SWA"
-#   Stress              : raw numeric stress score (continuous covariate -
-#                         no more low/moderate/high binning)
-#   Recall1             : accuracy on recall 1 (may be blank/NaN)
-#   Recall2             : accuracy on recall 2 (may be blank/NaN)
-#
-# The key in PARTICIPANT_METADATA is the zero-padded participant number as a
-# string (e.g. "01", "02", ... "70") to match existing filename conventions.
-# Rows with a missing Condition are skipped entirely (can't be grouped).
-# Missing Stress/Recall1/Recall2 values are kept as None and are simply
-# skipped wherever they would break a given statistical test.
-# -----------------------------------------------------------------------------
+"""
+PARTICIPANT METADATA
+=============================================================================
+ Metadata is now loaded dynamically from the behavioral CSV instead of a
+ hardcoded dict. The CSV must have (at minimum) these columns:
+   Participant_number : integer participant ID (matches the number in the
+                         EEG filename, e.g. 1 -> "01rec1.vhdr")
+   Condition           : "control" | "SWA-ENG" | "ENG-SWA"
+   Stress              : raw numeric stress score (continuous covariate)
+   Recall1             : accuracy on recall 1 (may be blank/NaN)
+   Recall2             : accuracy on recall 2 (may be blank/NaN)
 
+ The key in PARTICIPANT_METADATA is the zero-padded participant number as a
+ string (e.g. "01", "02", ... "70") to match existing filename conventions.
+ Rows with a missing Condition are skipped entirely (can't be grouped).
+ Missing Stress/Recall1/Recall2 values are kept as None and are simply
+ skipped wherever they would break a given statistical test.
+"""
+#This is a folder directory where the data  is coming from (change)
 DATA_DIR       = Path(r"E:\Thesis folder UM\Analysis\Valid")
 ALL_FILES      = sorted(set(DATA_DIR.glob("*rec*.vhdr")))
+#This is a folder directory where the analyzed is going to go to (change)
 OUTPUT_ROOT    = Path(r"D:\Code\EEG_output")
+#This is a folder directory where the behavioral data is coming from (change)
 BEHAVIORAL_CSV = Path(r"E:\Thesis folder UM\Analysis\Participants_Behavioral_data.csv")
 
 
 def _clean_col(name):
-    """Normalize a CSV column header: strip whitespace/BOM."""
+    #Normalize a CSV column header: strip whitespace/BOM
     return str(name).strip().lstrip("\ufeff")
 
 
@@ -67,8 +68,7 @@ def load_participant_metadata(csv_path=BEHAVIORAL_CSV):
     df = pd.read_csv(csv_path)
     df.columns = [_clean_col(c) for c in df.columns]
 
-    # Column name mapping - tolerate the trailing space on "Recall1 " and any
-    # stray unnamed columns from blank Encoding cells in the raw sheet.
+    # Column name mapping: tolerate the trailing space on "Recall1 " and any stray unnamed columns from blank Encoding cells in the raw sheet.
     colmap = {}
     for c in df.columns:
         key = c.strip().lower()
@@ -112,7 +112,7 @@ def load_participant_metadata(csv_path=BEHAVIORAL_CSV):
             "accuracy_recall2": _num_or_none(row[colmap["recall2"]]),
         }
 
-    print(f"    Loaded metadata for {len(metadata)} participants from {csv_path}")
+    print(f"Loaded metadata for {len(metadata)} participants from {csv_path}")
     return metadata
 
 
@@ -121,57 +121,51 @@ PARTICIPANT_METADATA = load_participant_metadata()
 # Valid labels (edit these if you rename your groups)
 CONDITIONS = ["control", "SWA-ENG", "ENG-SWA"]
 
-# =============================================================================
-# CONFIG - edit these values to match your data
+
+# CONFIGURATION - These are the settings for current data processing (edit these values to match your data)
 # =============================================================================
 
-
-# --- Re-referencing ---
+# Re-referencing
 REF2_CHANNEL = "ref2"
 
-# --- Filtering ---
+# Filtering 
 HIGHPASS_HZ  = 0.5
 LOWPASS_HZ   = 30.0
 FILTER_ORDER = 2
 
-# --- Ocular correction ---
+# Ocular correction 
 EOG_CHANNELS = ["HEOG left", "HEOG right", "VEOG above", "VEOG below"]
 CHANNELS_FOR_OCULAR_CORRECTION = None
 
-# --- Segmentation ---
+# Segmentation 
 EPOCH_MARKER = "Stimulus/S  1"
 EPOCH_TMIN   = -0.200
 EPOCH_TMAX   =  3.000
 BASELINE     = (-0.200, 0.0)
 
-# --- Artifact rejection ---
+# Artifact rejection 
 ARTIFACT_CHANNELS = ["Fz", "FCz", "Cz", "CPz", "Pz"]
 ARTIFACT_AMP_MIN  = -100e-6
 ARTIFACT_AMP_MAX  =  100e-6
 ARTIFACT_TIME_WIN = (-0.200, 0.200)
 
-# --- Wavelet (CWT Morlet) ---
+# Wavelet (CWT Morlet) 
 WAVELET_FREQS   = np.arange(4, 31, 1)
 MORLET_PARAM    = WAVELET_FREQS / 2
 OUTPUT_AMPLITUDE = True
 OUTPUT_POWER     = True
 
-# --- Frequency bands ---
+# Frequency bands 
 BANDS = {
     "theta": (4, 8),
     "alpha": (8, 13),
     "beta":  (13, 30),
 }
 
-# --- Topomap / time-course settings ---
+# Topomap / time-course settings 
 TOPOMAP_TIMES = [-0.1, 0.0, 0.2, 0.5, 1.0, 1.5, 2.0, 2.5, 2.9]
 KEY_CHANNELS  = ["Fz", "FCz", "Cz", "CPz", "Pz", "Oz"]
 
-# Frontal-midline subset used specifically for the H3 stress/theta/memory analysis.
-# Frontal midline theta (FM-theta) is the channel-specific signature reported in the
-# memory/stress literature (Fz, FCz are the canonical sites). Averaging across the
-# full KEY_CHANNELS list (which includes parietal/occipital Pz, Oz) dilutes this
-# effect - those sites aren't part of the theoretical claim in H3.
 FRONTAL_CHANNELS = ["Fz", "FCz"]
 
 # Time-windows for the summary tables (seconds)
@@ -183,12 +177,12 @@ TABLE_TIME_WINDOWS = [
     ("late",       1.500,  3.000),
 ]
 
-# --- Skip flags ---
+# Skips
 SKIP_REREF  = False
 SKIP_FILTER = False
 SKIP_OCULAR = False
 
-# =============================================================================
+
 # HELPERS - participant lookup
 # =============================================================================
 
@@ -220,7 +214,6 @@ def get_participant_num(filepath):
 
     return None
 
-
 def get_metadata(filepath):
     """Return {'stress': ..., 'condition': ...} for a file, or None if not found."""
     num = get_participant_num(filepath)
@@ -232,7 +225,6 @@ def get_metadata(filepath):
     if meta is None:
         print(f"    WARNING: Participant '{num}' not in PARTICIPANT_METADATA - file will be skipped in group analysis.")
     return meta
-
 
 def group_by_recall(files):
     recall1, recall2 = [], []
@@ -247,12 +239,10 @@ def group_by_recall(files):
     return recall1, recall2
 
 
-# =============================================================================
-# PIPELINE (processing - unchanged from original)
+# PIPELINE (processing of the data)
 # =============================================================================
 
 OUTPUT_DIR = None   # set per-file inside run_pipeline()
-
 
 def load_raw(filepath):
     print(f"\n[1] Loading: {filepath}")
@@ -282,8 +272,7 @@ def apply_filter(raw):
     iir_params = dict(order=FILTER_ORDER, ftype="butter", output="sos")
     raw_filt = raw.copy().filter(
         l_freq=HIGHPASS_HZ, h_freq=LOWPASS_HZ,
-        method="iir", iir_params=iir_params, verbose=False,
-    )
+        method="iir", iir_params=iir_params, verbose=False,)
     return raw_filt
 
 
@@ -322,14 +311,12 @@ def segment_epochs(raw):
         raise ValueError(
             f"Marker '{EPOCH_MARKER}' not found.\n"
             f"Available markers: {list(event_id.keys())}\n"
-            f"Edit EPOCH_MARKER in CONFIG to match exactly."
-        )
+            f"Edit EPOCH_MARKER in CONFIGURATION to match exactly.")
     epochs = mne.Epochs(
         raw, events,
         event_id={EPOCH_MARKER: event_id[EPOCH_MARKER]},
         tmin=EPOCH_TMIN, tmax=EPOCH_TMAX,
-        baseline=BASELINE, preload=True, verbose=False,
-    )
+        baseline=BASELINE, preload=True, verbose=False,)
     print(f"    Created {len(epochs)} epochs.")
     return epochs
 
@@ -424,7 +411,6 @@ def run_pipeline(file_path, output_root=None):
     return band_data
 
 
-# =============================================================================
 # ANALYSIS - grand averages, topomaps, time courses, TF TABLES
 # =============================================================================
 
@@ -486,27 +472,6 @@ def _get_eeg_picks_and_info(epochs):
 
 
 def plot_topomaps_per_band(grand_averages, epochs, band_name, group_label, save_dir):
-    """
-    Topomaps for one band at TOPOMAP_TIMES, saved to save_dir.
-    group_label is a string like 'condition_A' or 'stress_high'.
-
-    Fixes applied (previously caused misleading/blobby maps):
-      1. ONE fixed color scale for the whole band (computed from all time
-         points), not a new vmin/vmax per frame. Per-frame rescaling made
-         tiny differences look like huge changes and made frames
-         incomparable to each other.
-      2. Sequential colormap ('viridis') instead of diverging ('RdBu_r').
-         This is amplitude/power data, which is non-negative by
-         construction (it's an abs() of a complex wavelet coefficient) -
-         a diverging red/blue map implies a meaningful zero-crossing that
-         isn't actually there.
-      3. extrapolate='local' to reduce the wedge-shaped artifacts at the
-         scalp edge that come from sparse channel coverage (27 channels).
-      4. Title now reports values in the same units already used
-         elsewhere (raw volts are tiny, e.g. 1e-6, which displayed as a
-         misleading "0.0000" at 4 decimal places) - switched to
-         scientific notation so the real magnitude is visible.
-    """
     times             = epochs.times
     eeg_picks, info   = _get_eeg_picks_and_info(epochs)
 
@@ -593,13 +558,12 @@ def plot_band_time_courses(grand_averages, epochs, group_label, save_dir):
     print(f"    Saved time courses -> {plot_path}")
 
 
-# =============================================================================
 # TIME-FREQUENCY SUMMARY TABLES
 # =============================================================================
 
 def build_tf_table(grand_averages, epochs, group_label):
     """
-    Build a tidy DataFrame with mean amplitude per:
+    Build a DataFrame with mean amplitude per:
       band x time-window x channel (KEY_CHANNELS only)
 
     Columns:
@@ -644,10 +608,6 @@ def build_tf_table(grand_averages, epochs, group_label):
 
 
 def build_tf_table_allchannels(grand_averages, epochs, group_label):
-    """
-    Like build_tf_table but uses ALL EEG channels (not just KEY_CHANNELS).
-    Useful for topographic comparisons.
-    """
     times = epochs.times
     eeg_picks, _ = _get_eeg_picks_and_info(epochs)
     eeg_ch_names = [epochs.ch_names[i] for i in eeg_picks]
@@ -714,8 +674,7 @@ def save_tf_tables(all_dfs, save_dir, filename_stem):
     return combined
 
 
-# =============================================================================
-# GROUPING LOGIC - split accumulated data by condition / stress
+# GROUPING LOGIC - split accumulated data by condition
 # =============================================================================
 
 def run_analysis_for_groups(group_accum_by_label, recall_name, rep_epochs_store, dimension):
@@ -754,18 +713,18 @@ def run_analysis_for_groups(group_accum_by_label, recall_name, rep_epochs_store,
         group_label    = f"{recall_name}_{dimension}_{label_str}"
         save_dir       = OUTPUT_ROOT / recall_name / dimension / label_str
 
-        # -- topomaps ----------------------------------------------------------
+        # topomaps
         for band_name in BANDS:
             plot_topomaps_per_band(grand_averages, rep_epochs, band_name, group_label, save_dir)
 
-        # -- time courses ------------------------------------------------------
+        # time courses 
         plot_band_time_courses(grand_averages, rep_epochs, group_label, save_dir)
 
-        # -- TF table (key channels) -------------------------------------------
+        # TF table (key channels) 
         df = build_tf_table(grand_averages, rep_epochs, group_label)
         all_tf_dfs.append(df)
 
-        # -- TF table (all channels) -------------------------------------------
+        # TF table (all channels)
         df_all = build_tf_table_allchannels(grand_averages, rep_epochs, group_label)
         save_tf_tables([df_all], save_dir, f"tf_table_{group_label}_all_channels")
 
@@ -781,7 +740,7 @@ def run_analysis_for_groups(group_accum_by_label, recall_name, rep_epochs_store,
     save_tf_tables(all_tf_dfs, combined_dir, f"tf_table_{recall_name}_{dimension}_keychannels")
 
 
-# =============================================================================
+
 # BEHAVIORAL-EEG ANALYSIS
 # =============================================================================
 
@@ -846,11 +805,8 @@ def _load_subject_band_data(recall_dir):
 
 
 def describe_accuracy_by_group(subject_bands, dimension="condition"):
-    """Compute mean / SEM / min / max accuracy per group.
-
-    Note: stress is now a continuous covariate (see H3/H3b), so the only
-    supported grouping dimension is "condition".
-    """
+    #Compute mean / SEM / min / max accuracy per group
+   
     rows = []
 
     if dimension != "condition":
@@ -877,10 +833,8 @@ def describe_accuracy_by_group(subject_bands, dimension="condition"):
 
 
 def compare_accuracy_groups(subject_bands, dimension="condition"):
-    """Kruskal-Wallis across groups, pairwise Mann-Whitney U post-hoc with Bonferroni correction.
+    #Kruskal-Wallis across groups, pairwise Mann-Whitney U post-hoc with Bonferroni correction
 
-    Note: stress is now a continuous covariate, so only "condition" grouping is supported.
-    """
     rows = []
 
     if dimension != "condition":
@@ -932,10 +886,6 @@ def compare_accuracy_groups(subject_bands, dimension="condition"):
 
 
 def compute_accuracy_eeg_correlations(subject_bands, dimension):
-    """
-    For each band x time-window x channel, compute Pearson r between
-    accuracy and mean EEG amplitude across subjects in each subgroup.
-    """
     rows = []
 
     if dimension != "condition":
@@ -1057,7 +1007,6 @@ def plot_accuracy_vs_eeg_scatter(subject_bands, dimension, save_dir):
 
 
 def plot_accuracy_eeg_heatmap(subject_bands, dimension, save_dir):
-    """Heatmap: accuracy-EEG Pearson r per band x channel, averaged across time windows."""
     save_dir.mkdir(parents=True, exist_ok=True)
 
     if dimension != "condition":
@@ -1191,7 +1140,7 @@ def plot_accuracy_and_eeg_bars(subject_bands, dimension, save_dir):
 
 
 def save_behavioral_results(desc_df, comp_df, corr_df, save_dir):
-    """Save all behavioral analysis tables as CSV."""
+    #Save all behavioral analysis tables as CSV
     save_dir.mkdir(parents=True, exist_ok=True)
 
     if desc_df is not None and not desc_df.empty:
@@ -1208,17 +1157,6 @@ def save_behavioral_results(desc_df, comp_df, corr_df, save_dir):
 
 
 def regenerate_topomaps_from_saved(recall_dir, recall_name, output_root):
-    """
-    Rebuild topomaps (and the other group-level plots/tables) from already
-    saved band_data.npz + epochs_clean-epo.fif files on disk, WITHOUT
-    re-running the raw EEG processing pipeline (filtering/ocular
-    correction/CWT etc). Use this after fixing plot_topomaps_per_band
-    instead of uncommenting the full raw-reprocessing block in main.
-
-    Groups subjects by condition only. Stress is now a continuous covariate
-    (see H3/H3b), so it is no longer used to bucket subjects into topomap
-    groups here.
-    """
     print(f"\n{'='*60}")
     print(f"REGENERATING TOPOMAPS FROM SAVED DATA - {recall_name}")
     print("="*60)
@@ -1306,8 +1244,6 @@ def run_behavioral_analysis(recall_dir, recall_name):
     all_comp = []
     all_corr = []
 
-    # Stress is now a continuous covariate (see H3/H3b), so behavioral-EEG
-    # grouping is by condition only.
     for dimension in ["condition"]:
         print(f"\n--- {dimension.upper()} ---")
 
@@ -1347,7 +1283,7 @@ def run_behavioral_analysis(recall_dir, recall_name):
     print(f"\n  Behavioral-EEG analysis complete for {recall_name}")
 
 
-# =============================================================================
+
 # HYPOTHESIS TESTING - H1, H2, H3
 # =============================================================================
 
@@ -1411,22 +1347,6 @@ def _extract_theta_power(recall_dir, key_channels=FRONTAL_CHANNELS):
 
 
 def describe_band_power_by_condition(recall_dir, recall_name, participant_metadata, output_dir):
-    """
-    Descriptive (non-hypothesis) check: does theta/alpha/beta power at the
-    frontal-midline electrodes (Fz, FCz) differ across the three conditions
-    (control, ENG-SWA, SWA-ENG), separately for recall1 and recall2?
-
-    Reuses _extract_band_power() so the numbers are extracted exactly the
-    same way as the H3 mediation pathway (same channels, same averaging),
-    just grouped by condition instead of correlated with stress/recall.
-
-    Saves one CSV per recall session with descriptive stats (n, mean, sd)
-    per band per condition, plus a Kruskal-Wallis test across the three
-    conditions for each band (non-parametric, consistent with the rest of
-    the H3 analysis since band power is non-normally distributed).
-
-    Returns a pandas DataFrame with the results (also saved to disk).
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = []
 
@@ -1889,13 +1809,7 @@ def test_recall_change_score(output_dir):
 
 
 def _shapiro_report(label, arr):
-    """
-    Run + print a Shapiro-Wilk normality check on a 1D array. Mirrors the
-    normality block already used in test_h1_retrieval_practice, applied
-    here to the H3/H3b/H3c continuous variables (stress, band power,
-    recall), which previously had no normality check at all.
-    Returns the p-value (rounded) or None if there are too few observations.
-    """
+    
     arr = np.asarray(arr, dtype=float)
     if len(arr) < 3:
         print(f"    {label:20s}  too few observations for Shapiro-Wilk")
@@ -1906,20 +1820,7 @@ def _shapiro_report(label, arr):
 
 
 def _sensitivity_power(n, alpha=0.05, power=0.80):
-    """
-    A-priori-style sensitivity check for a bivariate correlation test at
-    sample size n:
-      (1) the minimum |r| that would even reach p < alpha, and
-      (2) the minimum |r| this design has `power` (default 80%) chance of
-          detecting at all, via the standard Fisher-z approximation
-          (Cohen, 1988).
-    For the *mediated* (indirect) effect specifically, published simulation
-    tables (Fritz & MacKinnon, 2007, Psychological Science, 18(3), 233-239)
-    indicate bias-corrected bootstrap mediation tests typically need
-    roughly N=71-148 for 80% power, depending on the size of the a- and
-    b-paths - so this single-correlation number is a *lower bound* on what
-    the mediation test itself needs, not the mediation power directly.
-    """
+
     df = n - 2
     t_crit = scipy_stats.t.ppf(1 - alpha / 2, df)
     r_crit = t_crit / np.sqrt(t_crit ** 2 + df)
@@ -1930,25 +1831,10 @@ def _sensitivity_power(n, alpha=0.05, power=0.80):
         "n": n,
         "r_significant_at_p05": round(float(r_crit), 4),
         "r_needed_for_80pct_power": round(float(r80), 4),
-        "mediation_power_note": ("Fritz & MacKinnon (2007) report ~71-148 participants "
-                                  "needed for 80% power in bias-corrected bootstrap mediation, "
-                                  "depending on a/b path sizes; at this N, treat mediation power "
-                                  "as at or below the single-correlation figures above."),
-    }
+        }
 
 
 def _standardized_paths(stress_vals, med_vals, recall_vals):
-    """
-    Standardized (z-scored) version of the a / b / c' / c paths, on top of
-    the raw-unit slopes already computed elsewhere in each H3* function.
-    Raw slopes depend on the arbitrary scales of stress/band-power/recall,
-    which made path_c_total_effect look like it "disagreed" with the
-    Pearson stress-recall r reported a few lines above it - they were
-    never the same quantity (slope vs. correlation). Standardizing first
-    puts every path in SD units and makes a/c directly comparable to the
-    r-values reported earlier (for a single predictor, standardized beta
-    == Pearson r), so this block should read as the more citable one.
-    """
     def _z(x):
         x = np.asarray(x, dtype=float)
         return (x - x.mean()) / x.std(ddof=1)
@@ -1970,14 +1856,6 @@ def _standardized_paths(stress_vals, med_vals, recall_vals):
 
 
 def _condition_controlled_b_path(combined, stress_vals, med_vals, recall_vals):
-    """
-    Exploratory robustness check: re-estimate the b-path (mediator ->
-    recall) controlling for BOTH stress and condition, instead of just
-    stress. Condition drove large behavioral effects in H1/H2 but was
-    intentionally left out of H3's pre-registered mediation model; this
-    reports what happens if it's added back in, labeled explicitly as
-    exploratory rather than silently changing the primary model.
-    """
     try:
         cond_list = [PARTICIPANT_METADATA[c["subj"]]["condition"] for c in combined]
         cond_dummies = pd.get_dummies(cond_list, drop_first=True).values.astype(float)
@@ -1990,14 +1868,8 @@ def _condition_controlled_b_path(combined, stress_vals, med_vals, recall_vals):
 
 
 def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
-    """
-    H3: Higher stress -> reduced theta power -> poorer recall.
-    Three-part mediation:
-      a) Stress correlation with theta power
-      b) Theta power correlation with recall accuracy
-      c) Stress correlation with recall accuracy
-      d) Mediation: does theta power partially mediate stress -> recall?
-    """
+    # H3: Higher stress -> reduced theta power -> poorer recall.
+    
     print(f"\n{'='*60}")
     print("HYPOTHESIS TEST - H3: Stress -> Theta Power -> Recall")
     print("="*60)
@@ -2034,8 +1906,7 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
 
     results["n_subjects"] = len(combined)
 
-    # -- Normality (Shapiro-Wilk), added: previously H3/H3b/H3c had no
-    # normality check at all, unlike H1. -------------------------------------
+    # Normality (Shapiro-Wilk)
     print("\n    -- Shapiro-Wilk Normality Checks --")
     results["normality_shapiro_p"] = {
         "stress":  _shapiro_report("stress", stress_vals),
@@ -2043,8 +1914,6 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
         "recall2": _shapiro_report("recall2", recall_vals),
     }
 
-    # -- Sensitivity / power, added: quantifies what this N could realistically
-    # detect, instead of only reporting "not significant". ------------------
     results["sensitivity"] = _sensitivity_power(results["n_subjects"])
 
     # a) Stress vs Theta correlation
@@ -2065,7 +1934,7 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
     results["stress_recall_p"] = round(float(p_stress_recall), 6)
     results["stress_recall_significant"] = bool(p_stress_recall < 0.05)
 
-    # d) Mediation analysis (Baron & Kenny approach)
+    # d) Mediation analysis
     # Path a:  stress -> theta            (unadjusted slope)
     # Path c:  stress -> recall           (unadjusted slope, total effect)
     # Path b / c': recall ~ stress + theta (theta and stress simultaneously) ->
@@ -2166,21 +2035,7 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
 
 
 def test_h3b_stress_beta_recall(recall_dir, recall2_data, output_dir):
-    """
-    Optional companion to H3, testing frontal beta power instead of theta.
-
-    Per the stress literature, beta and theta are predicted to move in
-    OPPOSITE directions with stress: alpha/theta tend to decrease under
-    stress while beta tends to increase (associated with heightened
-    arousal/anxiety and information-processing demand). So unlike H3
-    (stress -> LOWER theta -> poorer recall), the beta version predicts
-    stress -> HIGHER beta -> poorer recall. This function does not assume
-    a sign - it just reports the same three correlations and bootstrapped
-    mediation CI as test_h3_stress_theta_recall, using "beta" extracted
-    over the same frontal channels, so you can check whether the sign
-    actually comes out the way the literature predicts before reporting it
-    as supporting/disconfirming H3's specificity claim.
-    """
+    
     print(f"\n{'='*60}")
     print("HYPOTHESIS TEST - H3b (exploratory): Stress -> Frontal Beta -> Recall")
     print("="*60)
@@ -2277,19 +2132,7 @@ def test_h3b_stress_beta_recall(recall_dir, recall2_data, output_dir):
 
 
 def test_h3c_stress_alpha_recall(recall_dir, recall2_data, output_dir):
-    """
-    Second exploratory companion to H3, testing frontal alpha power instead
-    of theta (parallel to test_h3b_stress_beta_recall for beta).
-
-    Alpha, like theta, is generally reported to decrease under stress and
-    to relate to attentional/inhibitory control during memory tasks, so the
-    predicted direction here is the SAME sign as H3's theta path (stress ->
-    LOWER alpha -> poorer recall). As with H3b, this function does not
-    assume the sign is correct - it reports the same three correlations,
-    point-estimate mediation paths (a, b, c', c), and bootstrapped
-    indirect-effect CI as test_h3_stress_theta_recall, using "alpha"
-    extracted over the same frontal channels (Fz, FCz).
-    """
+   
     print(f"\n{'='*60}")
     print("HYPOTHESIS TEST - H3c (exploratory): Stress -> Frontal Alpha -> Recall")
     print("="*60)
@@ -2730,7 +2573,7 @@ def build_h3_results_table(h3, h3b, h3c, output_dir):
     if df.empty:
         return df
 
-    # ---- Build the simplified display table -------------------------------
+    # Build the simplified display table 
     def _fmt_r_p(r, p):
         if pd.isna(r):
             return "-"
@@ -2854,18 +2697,6 @@ def _extract_full_channel_band_power(recall_dir, band, ch_names_wanted):
 
 
 def plot_band_power_by_condition_topomaps(recall_dir, recall_name, participant_metadata, output_dir):
-    """
-    One figure per recall session (not one file per band/condition):
-    rows = bands (theta/alpha/beta), columns = conditions (control,
-    ENG-SWA, SWA-ENG). Each cell is a topomap of average signal amplitude
-    (uV) across subjects in that condition, at every scalp channel.
-
-    This is the descriptive counterpart to plot_h3_eeg_topomaps(): that
-    function shows WHERE power correlates with stress/recall; this one
-    just shows the raw amplitude pattern itself, split by condition, so
-    it can be visually compared to the numeric table from
-    describe_band_power_by_condition().
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Channel positions/info, same approach as plot_h3_eeg_topomaps.
@@ -2909,9 +2740,6 @@ def plot_band_power_by_condition_topomaps(recall_dir, recall_name, participant_m
                 rows_uv.append([ch_power[ch] * 1e6 for ch in eeg_ch_names])
             cond_matrices[condition] = np.array(rows_uv) if rows_uv else None
 
-        # One shared color scale across all three conditions for this band,
-        # so columns are visually comparable (same logic as
-        # plot_topomaps_per_band's fix for per-frame rescaling).
         all_means = [m.mean(axis=0) for m in cond_matrices.values() if m is not None]
         if not all_means:
             for col in range(len(CONDITIONS)):
@@ -2951,12 +2779,7 @@ def plot_band_power_by_condition_topomaps(recall_dir, recall_name, participant_m
 
 
 def make_band_power_by_condition_table(recall1_csv, recall2_csv, output_path):
-    """
-    Build one clean summary table image (mean +/- SD in uV, plus the
-    Kruskal-Wallis H/p) from the two CSVs saved by
-    describe_band_power_by_condition(). Converts V -> uV so the table
-    reads in normal EEG units instead of scientific notation.
-    """
+  
     df = pd.concat([pd.read_csv(recall1_csv), pd.read_csv(recall2_csv)], ignore_index=True)
 
     conds = df[df.condition != "KRUSKAL_WALLIS_ACROSS_CONDITIONS"].copy()
@@ -3017,18 +2840,7 @@ def make_band_power_by_condition_table(recall1_csv, recall2_csv, output_path):
 
 
 def plot_h3_eeg_topomaps(recall_dir, output_dir, bands=("theta", "alpha", "beta")):
-    """
-    THE "EEG part" of H3, visually: for each band, correlate each channel's
-    power across subjects with (1) stress and (2) delayed recall accuracy,
-    then plot the resulting r-value at every scalp location as a topomap.
-
-    This is different from (and complements) the plain grand-average band
-    topomaps already produced by plot_topomaps_per_band(): those show WHERE
-    on the scalp a band is strongest; these show WHERE on the scalp that
-    band's power actually tracks stress/recall - i.e. a spatial picture of
-    the H3 mediation pathway instead of just the two frontal channels used
-    in the numeric test.
-    """
+    
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Grab one subject's epochs purely for channel positions/info (montage).
@@ -3083,10 +2895,6 @@ def plot_h3_eeg_topomaps(recall_dir, output_dir, bands=("theta", "alpha", "beta"
         stress_vals = np.array(stress_vals)
         recall_vals = np.array(recall_vals)
 
-        # Spearman for the same reason as the bar chart / averaged frontal
-        # test: theta/alpha/beta power and recall are all significantly
-        # right-skewed (Shapiro-Wilk), and Pearson vs Spearman gave a
-        # different significance conclusion on the c-path in this dataset.
         r_stress = np.array([
             scipy_stats.spearmanr(power_mat[:, i], stress_vals)[0]
             for i in range(power_mat.shape[1])
@@ -3103,14 +2911,6 @@ def plot_h3_eeg_topomaps(recall_dir, output_dir, bands=("theta", "alpha", "beta"
             mne.viz.plot_topomap(
                 r_vals, info, axes=axes[row, col],
                 vlim=(-absmax, absmax), cmap="RdBu_r", contours=6,
-                # FIX: sphere="auto" fits the sphere radius to this cap's
-                # digitized positions, but MNE draws the nose/ear patches at
-                # a size proportioned for the *standard* head radius
-                # (~0.095 m). If the digitized cap isn't perfectly spherical,
-                # "auto" can return a radius that no longer matches those
-                # patches -> oversized nose/ears relative to the head
-                # circle. Pinning sphere to the standard radius keeps the
-                # patches and the head circle in the same proportion.
                 sphere=0.095, extrapolate="head", show=False,
             )
             axes[row, col].set_title(
@@ -3129,9 +2929,6 @@ def plot_h3_eeg_topomaps(recall_dir, output_dir, bands=("theta", "alpha", "beta"
     return plot_path
 
 
-# Rough scalp-region lookup by standard 10-20 channel-name prefix. Used only
-# to order/colour bars in plot_h3_channel_bars below - it's a labelling
-# convenience, not a statistical grouping (no averaging across channels).
 _REGION_ORDER = ["Frontal", "Fronto-central", "Central", "Centro-parietal",
                   "Parietal", "Occipital", "Temporal", "Other"]
 _REGION_COLORS = {
@@ -3165,27 +2962,6 @@ def _channel_region(ch_name):
 
 
 def plot_h3_channel_bars(recall_dir, output_dir, bands=("theta", "alpha", "beta")):
-    """
-    Alternative to the H3 scalp topomaps: a per-channel horizontal bar chart
-    of the same stress<->power and power<->recall correlations, one panel
-    per band (2 rows x len(bands) cols, matching the topomap layout).
-
-    Why a bar chart instead of a topomap here:
-      - None of the channel-wise correlations in this dataset reach the
-        n=61 significance threshold (|r| >= .25, dashed reference line
-        below). A smoothed/interpolated topomap visually implies a
-        continuous spatial gradient *between* electrodes and can read as a
-        localized "hot spot" even when the underlying values are
-        essentially noise and were not corrected for the number of
-        channels tested. A bar chart shows only the values that were
-        actually measured, at the resolution they were actually measured,
-        with no interpolation.
-      - Exact r-values are readable directly (useful for a thesis
-        appendix), whereas colour alone under-informs the reader.
-    Bars are coloured by scalp region (label only, not a statistical
-    grouping) and sorted by region then by channel name so the frontal
-    theta channels central to H3 (Fz, FCz) are easy to find.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     info = None
@@ -3245,13 +3021,6 @@ def plot_h3_channel_bars(recall_dir, output_dir, bands=("theta", "alpha", "beta"
         stress_vals = np.array(stress_vals)
         recall_vals = np.array(recall_vals)
 
-        # Spearman, not Pearson: theta/alpha/beta power and recall were all
-        # significantly right-skewed under Shapiro-Wilk (reported in-text),
-        # and the c-path result (Pearson n.s. vs Spearman p=.035) showed
-        # this isn't a cosmetic distinction - it can flip a conclusion.
-        # Spearman is used here per-channel for the same reason it was
-        # treated as the more trustworthy estimate for the averaged
-        # frontal metric.
         r_stress = np.array([scipy_stats.spearmanr(power_mat[:, i], stress_vals)[0]
                               for i in range(power_mat.shape[1])])
         r_recall = np.array([scipy_stats.spearmanr(power_mat[:, i], recall_vals)[0]
@@ -3274,7 +3043,7 @@ def plot_h3_channel_bars(recall_dir, output_dir, bands=("theta", "alpha", "beta"
             if row == 1:
                 ax.set_xlabel("Spearman ρ")
 
-    # Region legend (shared)
+    # Region legend
     handles = [plt.Rectangle((0, 0), 1, 1, color=_REGION_COLORS[r]) for r in _REGION_ORDER
                if r in {_channel_region(c) for c in eeg_ch_names}]
     labels = [r for r in _REGION_ORDER if r in {_channel_region(c) for c in eeg_ch_names}]
@@ -3293,21 +3062,6 @@ def plot_h3_channel_bars(recall_dir, output_dir, bands=("theta", "alpha", "beta"
 
 
 def run_hypothesis_tests(recall_dir, output_dir):
-    """
-    Run all hypothesis tests (H1, H2, recall1-vs-recall2 change score, H3, H3b).
-
-    recall_dir: path to EEG_output directory containing "recall1"/"recall2" subfolders
-    output_dir: path to save results (EEG_output/hypothesis_tests)
-
-    H1 and H2 are run on BOTH recall1 and recall2:
-      - recall2 (the delayed test) is the PRIMARY hypothesis test.
-      - recall1 is a comparison/control check - is there already a group
-        difference at recall1, before the delay/retrieval-practice
-        manipulation had a chance to matter?
-    A paired recall1->recall2 change-score analysis is also run per
-    condition, which is the direct test of whether retrieval practice
-    caused a bigger GAIN over time (not just a higher recall2 endpoint).
-    """
     print(f"\n{'#'*60}")
     print("# HYPOTHESIS TESTING PIPELINE")
     print(f"{'#'*60}")
@@ -3348,22 +3102,18 @@ def run_hypothesis_tests(recall_dir, output_dir):
     plot_h1_h2_significance_heatmap(h1_recall1, h1_recall2, h2_recall1, h2_recall2, figures_dir)
     build_h1_h2_results_table(h1_recall1, h1_recall2, h2_recall1, h2_recall2, figures_dir)
 
-    # Recall1 -> Recall2 change score (paired, per condition) - the direct
-    # test of whether retrieval practice caused a bigger GAIN over time.
+    # Recall1 -> Recall2 change score (paired, per condition) - the direct test of whether retrieval practice caused a bigger GAIN over time.
     change_score = test_recall_change_score(tests_dir)
 
-    # H3 (needs EEG data; stress is now a continuous covariate)
+    # H3
     h3 = test_h3_stress_theta_recall(recall2_dir if recall2_dir.exists() else recall_dir, recall2_data, tests_dir)
 
-    # H3b - exploratory beta-band companion (opposite predicted direction to theta)
+    # H3b - exploratory beta-band companion
     h3b = test_h3b_stress_beta_recall(recall2_dir if recall2_dir.exists() else recall_dir, recall2_data, tests_dir)
 
-    # H3c - exploratory alpha-band companion (same predicted direction as theta)
+    # H3c - exploratory alpha-band companion 
     h3c = test_h3c_stress_alpha_recall(recall2_dir if recall2_dir.exists() else recall_dir, recall2_data, tests_dir)
 
-    # -- H3 figures: one consolidated theta/beta/alpha mediation table, plus
-    #    scalp correlation topomaps showing WHERE stress<->power and
-    #    power<->recall associations are strongest.
     build_h3_results_table(h3, h3b, h3c, figures_dir)
     # Primary recommendation: per-channel bar chart (no spatial interpolation,
     # honest about the null/non-significant channel-wise correlations).
@@ -3443,72 +3193,69 @@ def run_hypothesis_tests(recall_dir, output_dir):
     print(f"\n  Saved summary -> {tests_dir / 'hypothesis_summary.json'}")
 
 
-# =============================================================================
+
 # MAIN
 # =============================================================================
 
 if __name__ == "__main__":
-
-    # -- EEG PROCESSING PIPELINE - commented out, files already saved to disk --
-    # Uncomment this block only if you need to reprocess the raw EEG files.
-    #
-    # print(f"Found {len(ALL_FILES)} files")
-    # recall1_files, recall2_files = group_by_recall(ALL_FILES)
-    # print(f"  recall1: {len(recall1_files)} files")
-    # print(f"  recall2: {len(recall2_files)} files")
-    #
-    # for recall_name, files in [("recall1", recall1_files), ("recall2", recall2_files)]:
-    #     if not files:
-    #         print(f"\n  No files for {recall_name} - skipping.")
-    #         continue
-    #
-    #     recall_dir = OUTPUT_ROOT / recall_name
-    #     recall_dir.mkdir(parents=True, exist_ok=True)
-    #
-    #     cond_accum      = {c: {b: [] for b in BANDS} for c in CONDITIONS}
-    #     cond_rep_epochs = {}
-    #     # NOTE: stress is now a continuous covariate (see H3/H3b), so it is no
-    #     # longer used to bucket subjects into topomap groups here.
-    #
-    #     for file in files:
-    #         meta = get_metadata(file)
-    #         if meta is None:
-    #             continue
-    #         condition = meta["condition"]
-    #         if condition not in CONDITIONS:
-    #             print(f"    WARNING: Unknown condition '{condition}' for {file.name} - skipping.")
-    #             continue
-    #         subj_dir = recall_dir / Path(file).stem
-    #         try:
-    #             print(f"\nProcessing [{recall_name}] {file.name}  (condition={condition})")
-    #             band_data = run_pipeline(str(file), output_root=recall_dir)
-    #             for band_name, band_arr in band_data.items():
-    #                 cond_accum[condition][band_name].append(band_arr)
-    #             ep_path = subj_dir / "epochs_clean-epo.fif"
-    #             if ep_path.exists():
-    #                 if condition not in cond_rep_epochs:
-    #                     cond_rep_epochs[condition] = mne.read_epochs(ep_path, verbose=False)
-    #         except Exception as e:
-    #             print(f"\nERROR processing {file.name}: {e}")
-    #             import traceback; traceback.print_exc()
-    #
-    #     run_analysis_for_groups(cond_accum, recall_name, cond_rep_epochs, "condition")
-    #     run_behavioral_analysis(recall_dir, recall_name)
-
-    # -- ANALYSIS ONLY - reads from already-saved files, no EEG reprocessing --
-    # Regenerate topomaps/time-courses/TF tables for each recall using the
-    # already-saved band_data.npz + epochs files (uses the fixed
-    # plot_topomaps_per_band - global per-band color scale, sequential
-    # colormap for amplitude/power, extrapolate='local'). This does NOT
-    # touch the raw .vhdr files, so it's safe to run repeatedly.
+    """
+    EEG PROCESSING PIPELINE - comment out, if files already saved to disk
+     Uncomment this block only if you need to reprocess the raw EEG files
+    
+     print(f"Found {len(ALL_FILES)} files")
+     recall1_files, recall2_files = group_by_recall(ALL_FILES)
+     print(f"  recall1: {len(recall1_files)} files")
+     print(f"  recall2: {len(recall2_files)} files")
+    
+     for recall_name, files in [("recall1", recall1_files), ("recall2", recall2_files)]:
+         if not files:
+             print(f"\n  No files for {recall_name} - skipping.")
+             continue
+    
+         recall_dir = OUTPUT_ROOT / recall_name
+         recall_dir.mkdir(parents=True, exist_ok=True)
+    
+         cond_accum      = {c: {b: [] for b in BANDS} for c in CONDITIONS}
+         cond_rep_epochs = {}
+    
+         for file in files:
+             meta = get_metadata(file)
+             if meta is None:
+                 continue
+             condition = meta["condition"]
+             if condition not in CONDITIONS:
+                 print(f"    WARNING: Unknown condition '{condition}' for {file.name} - skipping.")
+                 continue
+             subj_dir = recall_dir / Path(file).stem
+             try:
+                 print(f"\nProcessing [{recall_name}] {file.name}  (condition={condition})")
+                 band_data = run_pipeline(str(file), output_root=recall_dir)
+                 for band_name, band_arr in band_data.items():
+                     cond_accum[condition][band_name].append(band_arr)
+                 ep_path = subj_dir / "epochs_clean-epo.fif"
+                 if ep_path.exists():
+                     if condition not in cond_rep_epochs:
+                         cond_rep_epochs[condition] = mne.read_epochs(ep_path, verbose=False)
+             except Exception as e:
+                 print(f"\nERROR processing {file.name}: {e}")
+                 import traceback; traceback.print_exc()
+    
+         run_analysis_for_groups(cond_accum, recall_name, cond_rep_epochs, "condition")
+         run_behavioral_analysis(recall_dir, recall_name)
+    """
+    """
+    ANALYSIS ONLY - reads from already-saved files,
+    Regenerate topomaps/time-courses/TF tables for each recall using the
+    already-saved band_data.npz + epochs files. This does NOT
+    touch the raw .vhdr files, so it's safe to run repeatedly.
+    """
     for _recall_name in ("recall1", "recall2"):
         _recall_dir = OUTPUT_ROOT / _recall_name
         if _recall_dir.exists():
             regenerate_topomaps_from_saved(_recall_dir, _recall_name, OUTPUT_ROOT)
-
-    # -- Descriptive check: band power by condition, per recall session --
-    # Not tied to a hypothesis - just reports whether theta/alpha/beta power
-    # (at Fz/FCz) look different across control/ENG-SWA/SWA-ENG.
+  
+    #Descriptive check: band power by condition, per recall session
+    
     _participant_metadata = load_participant_metadata()
     _band_power_csvs = {}
     for _recall_name in ("recall1", "recall2"):
