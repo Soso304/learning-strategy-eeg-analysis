@@ -215,12 +215,10 @@ def get_participant_num(filepath):
     return None
 
 def get_metadata(filepath):
-    """Return {'stress': ..., 'condition': ...} for a file, or None if not found."""
     num = get_participant_num(filepath)
     if num is None:
         print(f"    WARNING: Could not extract participant number from '{Path(filepath).name}'")
         return None
-    # Try both zero-padded and non-padded
     meta = PARTICIPANT_METADATA.get(num) or PARTICIPANT_METADATA.get(num.lstrip("0") or "0")
     if meta is None:
         print(f"    WARNING: Participant '{num}' not in PARTICIPANT_METADATA - file will be skipped in group analysis.")
@@ -419,7 +417,7 @@ def compute_grand_averages(band_data):
     band_data: dict  band_name -> list of arrays, each either:
                  (n_epochs, n_channels, n_times)  - raw per-subject band data
                OR
-                 (n_channels, n_times)             - already epoch-averaged
+                 (n_channels, n_times)             - epoch-averaged
     Returns:   dict  band_name -> {'mean', 'sem', 'per_subject'}
     """
     grand_averages = {}
@@ -474,8 +472,7 @@ def _get_eeg_picks_and_info(epochs):
 def plot_topomaps_per_band(grand_averages, epochs, band_name, group_label, save_dir):
     times             = epochs.times
     eeg_picks, info   = _get_eeg_picks_and_info(epochs)
-
-    # --- Fix 1 & 2: one global, non-negative-aware scale for the whole band ---
+ 
     all_band_data = grand_averages[band_name]['mean'][eeg_picks, :]
     data_is_nonnegative = bool(all_band_data.min() >= 0)
     absmax = float(np.percentile(np.abs(all_band_data), 99))
@@ -520,7 +517,7 @@ def plot_topomaps_per_band(grand_averages, epochs, band_name, group_label, save_
 
 
 def plot_band_time_courses(grand_averages, epochs, group_label, save_dir):
-    """Time-course plots (mean +/- SEM) for each band x key channel."""
+    # Time-course plots (mean +/- SEM) for each band x key channel
     times = epochs.times
     fig, axes = plt.subplots(len(BANDS), len(KEY_CHANNELS), figsize=(20, 3 * len(BANDS)))
 
@@ -540,7 +537,7 @@ def plot_band_time_courses(grand_averages, epochs, group_label, save_dir):
                 mean[ch_data_idx, :] + sem[ch_data_idx, :],
                 alpha=0.3, color='blue', label='+/-SEM'
             )
-            ax.axvline(0, color='red', linestyle='--', linewidth=1, label='S1')
+            ax.axvline(0, color='red', linestyle=' ', linewidth=1, label='S1')
             ax.set_title(f'{band_name.upper()} - {ch_name}')
             ax.set_xlabel('Time (s)')
             if ch_plot_idx == 0:
@@ -646,10 +643,8 @@ def build_tf_table_allchannels(grand_averages, epochs, group_label):
 
 
 def save_tf_tables(all_dfs, save_dir, filename_stem):
-    """
-    Concatenate a list of DataFrames and save as CSV + Excel.
-    Each DataFrame should already have a 'group' column.
-    """
+    #Concatenate a list of DataFrames and save as CSV + Excel.
+   
     if not all_dfs:
         print("    No TF table data to save.")
         return
@@ -667,7 +662,7 @@ def save_tf_tables(all_dfs, save_dir, filename_stem):
         combined.to_excel(writer, sheet_name="all_groups", index=False)
         # Also one sheet per group
         for grp, sub_df in combined.groupby("group"):
-            sheet_name = str(grp)[:31]  # Excel sheet name limit
+            sheet_name = str(grp)[:31]  
             sub_df.to_excel(writer, sheet_name=sheet_name, index=False)
     print(f"    Saved TF table (XLSX) -> {xlsx_path}")
 
@@ -728,9 +723,6 @@ def run_analysis_for_groups(group_accum_by_label, recall_name, rep_epochs_store,
         df_all = build_tf_table_allchannels(grand_averages, rep_epochs, group_label)
         save_tf_tables([df_all], save_dir, f"tf_table_{group_label}_all_channels")
 
-        # Release this group's grand-average arrays (each holds a full
-        # per-subject stack per band) and any stray open figures before
-        # moving to the next condition.
         del grand_averages
         plt.close('all')
         gc.collect()
@@ -745,10 +737,9 @@ def run_analysis_for_groups(group_accum_by_label, recall_name, rep_epochs_store,
 # =============================================================================
 
 def _load_subject_band_data(recall_dir):
-    """
-    Walk saved subject directories and load band_data.npz + cwt_metadata.npz.
-    Returns dict {subject_num: {condition, stress, accuracy, band_data: {band: (n_ch, n_time)}, ch_names, times}}
-    """
+    #Walk saved subject directories and load band_data.npz + cwt_metadata.npz.
+    #Returns dict {subject_num: {condition, stress, accuracy, band_data: {band: (n_ch, n_time)}, ch_names, times}}
+    
     subject_bands = {}
     if not recall_dir.exists():
         print(f"    WARNING: {recall_dir} does not exist.")
@@ -865,7 +856,7 @@ def compare_accuracy_groups(subject_bands, dimension="condition"):
         "significant": bool(kw_p < 0.05),
     })
 
-    # Post-hoc pairwise Mann-Whitney U with Bonferroni
+    # Post-hoc pairwise with Bonferroni
     if kw_p < 0.05:
         from itertools import combinations
         n_tests = len(list(combinations(groups, 2)))
@@ -884,69 +875,7 @@ def compare_accuracy_groups(subject_bands, dimension="condition"):
 
     return pd.DataFrame(rows)
 
-
-def compute_accuracy_eeg_correlations(subject_bands, dimension):
-    rows = []
-
-    if dimension != "condition":
-        raise ValueError(f"Unsupported dimension '{dimension}' - only 'condition' "
-                          f"grouping is supported now that stress is continuous.")
-    group_key = lambda s: s["condition"]
-
-    # Group subjects
-    groups = {}
-    for subj_num, s in subject_bands.items():
-        grp = group_key(s)
-        groups.setdefault(grp, []).append(s)
-
-    for grp, members in groups.items():
-        if len(members) < 3:
-            print(f"    WARNING: Only {len(members)} subjects in {grp} - skipping correlation.")
-            continue
-
-        accs = np.array([m["accuracy_recall2"] for m in members])
-
-        for band_name, (fmin, fmax) in BANDS.items():
-            times = members[0]["times"]
-
-            for win_label, tmin, tmax in TABLE_TIME_WINDOWS:
-                win_mask = (times >= tmin) & (times <= tmax)
-                if not win_mask.any():
-                    continue
-
-                for ch_idx, ch_name in enumerate(members[0]["ch_names"]):
-                    if ch_name not in KEY_CHANNELS:
-                        continue
-
-                    subj_amplitudes = []
-                    for m in members:
-                        amp = m["band_data"][band_name][ch_idx, win_mask].mean()
-                        subj_amplitudes.append(amp)
-                    subj_amplitudes = np.array(subj_amplitudes)
-
-                    if np.std(accs) > 0 and np.std(subj_amplitudes) > 0:
-                        r, p = scipy_stats.pearsonr(accs, subj_amplitudes)
-                    else:
-                        r, p = 0.0, 1.0
-
-                    rows.append({
-                        "dimension": dimension,
-                        "group": grp,
-                        "band": band_name,
-                        "freq_range_Hz": f"{fmin}-{fmax}",
-                        "time_window": win_label,
-                        "channel": ch_name,
-                        "r_value": round(float(r), 4),
-                        "p_value": round(float(p), 6),
-                        "n_subjects": len(members),
-                        "significant": bool(p < 0.05),
-                    })
-
-    return pd.DataFrame(rows)
-
-
 def plot_accuracy_vs_eeg_scatter(subject_bands, dimension, save_dir):
-    """Scatter plots: accuracy vs mean EEG amplitude per band, one subplot per group."""
     save_dir.mkdir(parents=True, exist_ok=True)
 
     if dimension != "condition":
@@ -981,17 +910,6 @@ def plot_accuracy_vs_eeg_scatter(subject_bands, dimension, save_dir):
 
             ax.scatter(subj_amplitudes, accs, s=80, alpha=0.7, edgecolors='k', linewidth=0.5)
 
-            valid = ~(np.isnan(subj_amplitudes))
-            if valid.any() and np.std(subj_amplitudes[valid]) > 0:
-                z = np.polyfit(subj_amplitudes[valid], accs[valid], 1)
-                p = np.poly1d(z)
-                x_line = np.linspace(subj_amplitudes[valid].min(), subj_amplitudes[valid].max(), 100)
-                ax.plot(x_line, p(x_line), 'r--', linewidth=1.5)
-
-                r, pval = scipy_stats.pearsonr(subj_amplitudes[valid], accs[valid])
-                ax.text(0.05, 0.95, f'r={r:.3f}\np={pval:.4f}',
-                       transform=ax.transAxes, va='top', fontsize=10)
-
             ax.set_xlabel(f'{band_name.upper()} amplitude ({fmin}-{fmax} Hz)')
             ax.set_ylabel('Accuracy')
             ax.set_title(f'{grp}')
@@ -1006,74 +924,9 @@ def plot_accuracy_vs_eeg_scatter(subject_bands, dimension, save_dir):
         print(f"    Saved scatter -> {plot_path}")
 
 
-def plot_accuracy_eeg_heatmap(subject_bands, dimension, save_dir):
-    save_dir.mkdir(parents=True, exist_ok=True)
-
-    if dimension != "condition":
-        raise ValueError(f"Unsupported dimension '{dimension}' - only 'condition' "
-                          f"grouping is supported now that stress is continuous.")
-    group_key = lambda s: s["condition"]
-
-    groups = {}
-    for subj_num, s in subject_bands.items():
-        grp = group_key(s)
-        groups.setdefault(grp, []).append(s)
-
-    for grp, members in groups.items():
-        if len(members) < 3:
-            continue
-
-        accs = np.array([m["accuracy_recall2"] for m in members])
-        n_bands = len(BANDS)
-        n_chs = len(KEY_CHANNELS)
-        corr_matrix = np.zeros((n_bands, n_chs))
-        p_matrix = np.zeros((n_bands, n_chs))
-
-        for band_idx, (band_name, _) in enumerate(BANDS.items()):
-            for ch_idx, ch_name in enumerate(KEY_CHANNELS):
-                subj_amplitudes = []
-                for m in members:
-                    bdata = m["band_data"][band_name]
-                    if ch_name in m["ch_names"]:
-                        ci = m["ch_names"].index(ch_name)
-                        subj_amplitudes.append(bdata[ci, :].mean())
-
-                if len(subj_amplitudes) == len(members) and np.std(subj_amplitudes) > 0:
-                    subj_amplitudes = np.array(subj_amplitudes)
-                    r, p = scipy_stats.pearsonr(accs, subj_amplitudes)
-                    corr_matrix[band_idx, ch_idx] = r
-                    p_matrix[band_idx, ch_idx] = p
-
-        label = grp if isinstance(grp, str) else '_'.join(str(x) for x in grp)
-
-        fig, ax = plt.subplots(figsize=(8, 4))
-        im = ax.imshow(corr_matrix, aspect='auto', cmap='RdBu_r', vmin=-1, vmax=1)
-        ax.set_xticks(range(n_chs))
-        ax.set_xticklabels(KEY_CHANNELS)
-        ax.set_yticks(range(n_bands))
-        ax.set_yticklabels([b.upper() for b in BANDS.keys()])
-        ax.set_xlabel('Channel')
-        ax.set_ylabel('Band')
-        ax.set_title(f'Accuracy-EEG Correlation ({dimension}={grp})')
-
-        for i in range(n_bands):
-            for j in range(n_chs):
-                sig = '*' if p_matrix[i, j] < 0.05 else ''
-                ax.text(j, i, f'{corr_matrix[i, j]:.2f}{sig}',
-                       ha='center', va='center', fontsize=9,
-                       color='white' if abs(corr_matrix[i, j]) > 0.5 else 'black')
-
-        plt.colorbar(im, ax=ax, label="Pearson r")
-        plt.tight_layout()
-
-        plot_path = save_dir / f'heatmap_{label}.png'
-        plt.savefig(plot_path, dpi=150, bbox_inches='tight')
-        plt.close(fig)
-        print(f"    Saved heatmap -> {plot_path}")
 
 
 def plot_accuracy_and_eeg_bars(subject_bands, dimension, save_dir):
-    """Bar chart: accuracy and mean EEG amplitude side-by-side per group."""
     save_dir.mkdir(parents=True, exist_ok=True)
 
     if dimension != "condition":
@@ -1192,12 +1045,6 @@ def regenerate_topomaps_from_saved(recall_dir, recall_name, output_root):
                     continue
                 band_arr = np.asarray(bdata[band_name], dtype=np.float32)
                 if band_arr.ndim == 3:
-                    # Average over epochs NOW instead of keeping the full
-                    # (n_epochs, n_channels, n_times) array in memory for
-                    # every subject at once - compute_grand_averages only
-                    # ever needs the per-subject epoch-mean, so holding the
-                    # raw epoch-level data for all ~60 subjects x 3 bands
-                    # simultaneously is what was blowing up RAM.
                     band_arr = band_arr.mean(axis=0)
                 cond_accum[condition][band_name].append(band_arr)
             bdata.close()
@@ -1224,10 +1071,7 @@ def regenerate_topomaps_from_saved(recall_dir, recall_name, output_root):
 
 
 def run_behavioral_analysis(recall_dir, recall_name):
-    """
-    Main orchestrator: load per-subject data, run all analyses for
-    condition, stress, and combined dimensions.
-    """
+    
     print(f"\n{'=' * 60}")
     print(f"BEHAVIORAL-EEG ANALYSIS - {recall_name}")
     print("=" * 60)
@@ -1245,7 +1089,7 @@ def run_behavioral_analysis(recall_dir, recall_name):
     all_corr = []
 
     for dimension in ["condition"]:
-        print(f"\n--- {dimension.upper()} ---")
+        print(f"\n - {dimension.upper()}  -")
 
         # Descriptive stats
         desc_df = describe_accuracy_by_group(subject_bands, dimension)
@@ -1288,17 +1132,7 @@ def run_behavioral_analysis(recall_dir, recall_name):
 # =============================================================================
 
 def _extract_band_power(recall_dir, band="theta", key_channels=FRONTAL_CHANNELS):
-    """
-    Walk saved subject directories and extract mean power for a given band
-    (default: theta) for each participant, averaged over `key_channels`
-    (default: frontal-midline Fz/FCz - see FRONTAL_CHANNELS note above).
 
-    Use band="beta" with the same frontal channels, or pass a different
-    channel list, to test the alpha/beta predictions separately rather than
-    reusing the whole-scalp KEY_CHANNELS average.
-
-    Returns dict {subject_num: band_power_value}.
-    """
     band_data = {}
     if not recall_dir.exists():
         print(f"    WARNING: {recall_dir} does not exist for {band} extraction.")
@@ -1342,7 +1176,7 @@ def _extract_band_power(recall_dir, band="theta", key_channels=FRONTAL_CHANNELS)
 
 
 def _extract_theta_power(recall_dir, key_channels=FRONTAL_CHANNELS):
-    """Backwards-compatible wrapper: frontal-midline theta power per participant."""
+    
     return _extract_band_power(recall_dir, band="theta", key_channels=key_channels)
 
 
@@ -1403,27 +1237,22 @@ def describe_band_power_by_condition(recall_dir, recall_name, participant_metada
 
 def test_h1_retrieval_practice(recall_data, output_dir, recall_col="recall2"):
     """
-    H1: Retrieval practice -> higher recall accuracy.
-
-    `recall_col` selects which recall test to run on ("recall1" or "recall2").
-    Recall2 (the delayed test) is the primary hypothesis test; recall1 is run
-    as a comparison/control check (is there already a group difference before
-    the delay/retrieval-practice manipulation had a chance to matter?).
-
+    H1: Retrieval practice -> higher recall accuracy
+    
     Comparisons:
       1. One-way ANOVA across all three conditions (control, ENG-SWA, SWA-ENG)
       2. Pairwise Welch t-tests with Bonferroni correction:
            a) Control vs ENG-SWA
            b) Control vs SWA-ENG
            c) Control vs (ENG-SWA + SWA-ENG combined)
-      Descriptives: n, mean, SD, SEM for each group (raw scores and % out of 30).
+      Descriptives: n, mean, SD, SEM for each group (raw scores and % out of 30)
     """
     acc_key = f"accuracy_{recall_col}"
     print(f"\n{'='*60}")
     print(f"HYPOTHESIS TEST - H1: Retrieval Practice Effect ({recall_col})")
     print("="*60)
 
-    # -- Collect scores per condition ------------------------------------------
+    # Collect scores per condition                      
     groups = {"control": [], "ENG-SWA": [], "SWA-ENG": []}
 
     for subj_num, meta in PARTICIPANT_METADATA.items():
@@ -1452,7 +1281,7 @@ def test_h1_retrieval_practice(recall_data, output_dir, recall_col="recall2"):
         return {"group": label, "n": n, "mean": round(mean, 4), "sd": round(sd, 4),
                 "sem": round(sem, 4), "mean_pct": pct}
 
-    print("\n  -- Descriptive Statistics --")
+    print("\n    Descriptive Statistics  ")
     desc = [
         descriptives(control,  "Control"),
         descriptives(eng_swa,  "ENG-SWA"),
@@ -1460,8 +1289,8 @@ def test_h1_retrieval_practice(recall_data, output_dir, recall_col="recall2"):
         descriptives(combined, "ENG-SWA + SWA-ENG (combined)"),
     ]
 
-    # -- Normality -------------------------------------------------------------
-    print("\n  -- Shapiro-Wilk Normality Tests --")
+    # Normality                               -
+    print("\n    Shapiro-Wilk Normality Tests  ")
     normality = {}
     for label, arr in [("control", control), ("ENG-SWA", eng_swa),
                         ("SWA-ENG", swa_eng), ("combined", combined)]:
@@ -1473,8 +1302,8 @@ def test_h1_retrieval_practice(recall_data, output_dir, recall_col="recall2"):
             normality[label] = None
             print(f"    {label:30s}  too few observations")
 
-    # -- One-way ANOVA: control vs ENG-SWA vs SWA-ENG -------------------------
-    print("\n  -- One-Way ANOVA (Control vs ENG-SWA vs SWA-ENG) --")
+    # One-way ANOVA: control vs ENG-SWA vs SWA-ENG             -
+    print("\n    One-Way ANOVA (Control vs ENG-SWA vs SWA-ENG)  ")
     all_three = [control, eng_swa, swa_eng]
     if all(len(g) >= 2 for g in all_three):
         f_stat, p_anova = scipy_stats.f_oneway(*all_three)
@@ -1491,8 +1320,8 @@ def test_h1_retrieval_practice(recall_data, output_dir, recall_col="recall2"):
         print("    Not enough data for ANOVA.")
         anova_results = {}
 
-    # -- Pairwise Welch t-tests (Bonferroni corrected for 3 comparisons) -------
-    print("\n  -- Pairwise Welch t-tests (Bonferroni corrected, k=3) --")
+    # Pairwise Welch t-tests (Bonferroni corrected for 3 comparisons)    -
+    print("\n    Pairwise Welch t-tests (Bonferroni corrected, k=3)  ")
     comparisons = [
         ("Control vs ENG-SWA",            control, eng_swa),
         ("Control vs SWA-ENG",            control, swa_eng),
@@ -1528,7 +1357,7 @@ def test_h1_retrieval_practice(recall_data, output_dir, recall_col="recall2"):
             "significant_bonf": sig,
         })
 
-    # -- Save ------------------------------------------------------------------
+    # Save                                  
     output_dir.mkdir(parents=True, exist_ok=True)
 
     full_results = {
@@ -1544,7 +1373,7 @@ def test_h1_retrieval_practice(recall_data, output_dir, recall_col="recall2"):
     with open(output_dir / f"h1_retrieval_practice_{recall_col}.json", "w") as f:
         json.dump(full_results, f, indent=2)
 
-    # Also save a clean CSV of descriptives
+    # Save a clean CSV of descriptives
     pd.DataFrame(desc).to_csv(output_dir / f"h1_descriptives_{recall_col}.csv", index=False)
     pd.DataFrame(pairwise_results).to_csv(output_dir / f"h1_pairwise_{recall_col}.csv", index=False)
 
@@ -1552,7 +1381,7 @@ def test_h1_retrieval_practice(recall_data, output_dir, recall_col="recall2"):
     print(f"    Saved -> {output_dir / f'h1_descriptives_{recall_col}.csv'}")
     print(f"    Saved -> {output_dir / f'h1_pairwise_{recall_col}.csv'}")
 
-    # Overall H1 support: any pairwise comparison significant after correction?
+    # Overall H1 support
     any_sig = any(r["significant_bonf"] for r in pairwise_results)
     full_results["h1_supported"] = any_sig
     return full_results
@@ -1562,12 +1391,8 @@ def test_h2_language_order_interaction(recall_data, output_dir, recall_col="reca
     """
     H2: ENG-SWA shows stronger retrieval practice effect than SWA-ENG.
     2x2 ANOVA: condition_type (control vs experimental) x language_order (ENG-SWA vs SWA-ENG).
-    Since control has no language order, we use a one-way ANOVA with 3 groups
-    and planned contrasts to test the interaction.
-
-    `recall_col` selects which recall test to run on ("recall1" or "recall2").
-    Recall2 is the primary hypothesis test; recall1 is a comparison/control check.
     """
+    
     acc_key = f"accuracy_{recall_col}"
     print(f"\n{'='*60}")
     print(f"HYPOTHESIS TEST - H2: Language Order Interaction ({recall_col})")
@@ -1645,7 +1470,6 @@ def test_h2_language_order_interaction(recall_data, output_dir, recall_col="reca
     results["post_hoc"] = pairwise
 
     # Interaction test: is the retrieval practice effect (exp - control)
-    # larger for ENG-SWA than for SWA-ENG?
     rp_eng_swa = np.mean(exp_eng_swa_accs) - np.mean(control_accs)
     rp_swa_eng = np.mean(exp_swa_eng_accs) - np.mean(control_accs)
     results["rp_effect_eng_swa"] = round(float(rp_eng_swa), 4)
@@ -1692,20 +1516,18 @@ def test_h2_language_order_interaction(recall_data, output_dir, recall_col="reca
 
 def test_recall_change_score(output_dir):
     """
-    Recall1 -> Recall2 change-score analysis, per condition.
+    Recall1 -> Recall2 change-score analysis, per condition
 
     This is the direct test of whether retrieval practice caused a bigger
     GAIN over time, rather than just a higher endpoint at recall2:
       1. For each participant with both Recall1 and Recall2, compute
-         change = recall2 - recall1.
+         change = recall2 - recall1
       2. Paired test (Wilcoxon signed-rank, since n per group is small and
-         change scores are often non-normal) per condition: did that group's
-         recall change significantly from recall1 to recall2?
+         change scores are often non-normal) per condition
       3. One-way ANOVA (+ Kruskal-Wallis as a robust check) on the change
-         scores across the three conditions: does the amount of
-         change differ by condition/language order?
+         scores across the three conditions
 
-    Participants missing either Recall1 or Recall2 are skipped automatically.
+    Participants missing either Recall1 or Recall2 are skipped automatically
     """
     print(f"\n{'='*60}")
     print("RECALL1 -> RECALL2 CHANGE SCORE ANALYSIS")
@@ -1747,7 +1569,7 @@ def test_recall_change_score(output_dir):
             "sem_change": round(float(scipy_stats.sem(change)), 4) if n > 1 else np.nan,
         }
 
-        # Paired test: did this group change from recall1 to recall2?
+        # Paired test
         if n >= 2:
             try:
                 w_stat, w_p = scipy_stats.wilcoxon(r2_vals, r1_vals)
@@ -1755,7 +1577,6 @@ def test_recall_change_score(output_dir):
                 entry["wilcoxon_p"] = round(float(w_p), 6)
                 entry["wilcoxon_significant"] = bool(w_p < 0.05)
             except ValueError as e:
-                # e.g. all differences are zero
                 entry["wilcoxon_error"] = str(e)
             t_stat, t_p = scipy_stats.ttest_rel(r2_vals, r1_vals)
             entry["paired_t_stat"] = round(float(t_stat), 4)
@@ -1770,7 +1591,7 @@ def test_recall_change_score(output_dir):
 
     results["per_condition"] = per_condition
 
-    # Does the amount of change differ by condition?
+
     change_groups = {cond: [r["change"] for r in rows] for cond, rows in groups.items() if rows}
     if len(change_groups) >= 3 and all(len(v) >= 2 for v in change_groups.values()):
         vals = list(change_groups.values())
@@ -1907,7 +1728,7 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
     results["n_subjects"] = len(combined)
 
     # Normality (Shapiro-Wilk)
-    print("\n    -- Shapiro-Wilk Normality Checks --")
+    print("\n      Shapiro-Wilk Normality Checks  ")
     results["normality_shapiro_p"] = {
         "stress":  _shapiro_report("stress", stress_vals),
         "theta":   _shapiro_report("theta", theta_vals),
@@ -1916,30 +1737,6 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
 
     results["sensitivity"] = _sensitivity_power(results["n_subjects"])
 
-    # a) Stress vs Theta correlation
-    r_stress_theta, p_stress_theta = scipy_stats.pearsonr(stress_vals, theta_vals)
-    results["stress_theta_r"] = round(float(r_stress_theta), 4)
-    results["stress_theta_p"] = round(float(p_stress_theta), 6)
-    results["stress_theta_significant"] = bool(p_stress_theta < 0.05)
-
-    # b) Theta vs Recall correlation
-    r_theta_recall, p_theta_recall = scipy_stats.pearsonr(theta_vals, recall_vals)
-    results["theta_recall_r"] = round(float(r_theta_recall), 4)
-    results["theta_recall_p"] = round(float(p_theta_recall), 6)
-    results["theta_recall_significant"] = bool(p_theta_recall < 0.05)
-
-    # c) Stress vs Recall correlation
-    r_stress_recall, p_stress_recall = scipy_stats.pearsonr(stress_vals, recall_vals)
-    results["stress_recall_r"] = round(float(r_stress_recall), 4)
-    results["stress_recall_p"] = round(float(p_stress_recall), 6)
-    results["stress_recall_significant"] = bool(p_stress_recall < 0.05)
-
-    # d) Mediation analysis
-    # Path a:  stress -> theta            (unadjusted slope)
-    # Path c:  stress -> recall           (unadjusted slope, total effect)
-    # Path b / c': recall ~ stress + theta (theta and stress simultaneously) ->
-    #   coefficient on theta = b (theta -> recall, controlling for stress)
-    #   coefficient on stress = c' (stress -> recall, controlling for theta)
     n = len(combined)
     try:
         Xa = np.column_stack([np.ones(n), stress_vals])
@@ -1951,22 +1748,13 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
         b = recall_on_both[2]        # theta -> recall, controlling for stress
         c_prime = recall_on_both[1]  # stress -> recall, controlling for theta
 
-        # ---- Bootstrapped mediation (replaces Sobel test) ----
-        # The Sobel test assumes a*b is normally distributed, which is rarely true
-        # in small/medium samples (Hayes, 2009; Preacher & Hayes, 2004, 2008). The
-        # modern standard - what PROCESS does under the hood - is a nonparametric
-        # percentile bootstrap on the indirect effect: resample subjects with
-        # replacement, recompute a*b each time, and take the 2.5th/97.5th
-        # percentiles of that distribution as the 95% CI. No normality assumption,
-        # and it directly answers "is zero excluded from the plausible indirect
-        # effects" rather than relying on a z-test of a non-normal statistic.
         N_BOOT = 5000
         rng = np.random.default_rng(42)  # seeded for reproducibility
         boot_indirect = np.empty(N_BOOT)
         n_obs = len(combined)
 
         for i in range(N_BOOT):
-            idx = rng.integers(0, n_obs, size=n_obs)  # resample subjects w/ replacement
+            idx = rng.integers(0, n_obs, size=n_obs)  # resample subjects with replacement
             s_b, t_b, r_b = stress_vals[idx], theta_vals[idx], recall_vals[idx]
             Xb = np.column_stack([np.ones(n_obs), s_b, t_b])
             try:
@@ -1997,42 +1785,27 @@ def test_h3_stress_theta_recall(recall_dir, recall2_data, output_dir):
         }
     except Exception as e:
         results["mediation_error"] = str(e)
-
-    # -- Standardized paths, added: resolves path_c_total_effect (raw slope)
-    # visually "disagreeing" with stress_recall_r (correlation) above - they
-    # were never the same quantity. This block IS directly comparable to the
-    # r-values above. ---------------------------------------------------------
+                             -
     results["standardized_paths"] = _standardized_paths(stress_vals, theta_vals, recall_vals)
 
-    # -- Condition-controlled b-path, added: exploratory robustness check,
-    # NOT part of the pre-registered model (see docstring on the helper). ----
+    # Condition-controlled b-path, added: exploratory robustness check, 
     results["b_path_theta_recall_ctrl_stress_and_condition_exploratory"] = \
         _condition_controlled_b_path(combined, stress_vals, theta_vals, recall_vals)
 
     # Summary
     print(f"    Subjects with complete data: {results['n_subjects']}")
-    print(f"    a) Stress -> Theta: r={results['stress_theta_r']}, p={results['stress_theta_p']}")
-    print(f"    b) Theta -> Recall: r={results['theta_recall_r']}, p={results['theta_recall_p']}")
-    print(f"    c) Stress -> Recall: r={results['stress_recall_r']}, p={results['stress_recall_p']}")
     if "mediation" in results:
         m = results["mediation"]
         print(f"    Indirect effect (a*b): {m['indirect_effect']}")
         print(f"    Bootstrap 95% CI: [{m['boot_ci_95_low']}, {m['boot_ci_95_high']}]  "
               f"({'excludes zero' if m['boot_significant'] else 'includes zero'})")
         print(f"    Mediation type: {m['mediation_type']}")
-    h3_supported = (results["stress_theta_significant"] and
-                    results["theta_recall_significant"] and
-                    results["stress_recall_significant"])
-    results["h3_supported"] = h3_supported
-    print(f"    H3 supported: {h3_supported}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     with open(output_dir / "h3_stress_theta_recall.json", "w") as f:
         json.dump(results, f, indent=2)
     print(f"    Saved -> {output_dir / 'h3_stress_theta_recall.json'}")
-
     return results
-
 
 def test_h3b_stress_beta_recall(recall_dir, recall2_data, output_dir):
     
@@ -2067,7 +1840,7 @@ def test_h3b_stress_beta_recall(recall_dir, recall2_data, output_dir):
     n_obs = len(combined)
     results["n_subjects"] = n_obs
 
-    print("\n    -- Shapiro-Wilk Normality Checks --")
+    print("\n      Shapiro-Wilk Normality Checks  ")
     results["normality_shapiro_p"] = {
         "stress":  _shapiro_report("stress", stress_vals),
         "beta":    _shapiro_report("beta", beta_vals),
@@ -2075,21 +1848,7 @@ def test_h3b_stress_beta_recall(recall_dir, recall2_data, output_dir):
     }
     results["sensitivity"] = _sensitivity_power(n_obs)
 
-    r_stress_beta, p_stress_beta = scipy_stats.pearsonr(stress_vals, beta_vals)
-    results["stress_beta_r"] = round(float(r_stress_beta), 4)
-    results["stress_beta_p"] = round(float(p_stress_beta), 6)
-    results["stress_beta_significant"] = bool(p_stress_beta < 0.05)
-    results["direction_matches_literature"] = bool(r_stress_beta > 0)  # expect positive
-
-    r_beta_recall, p_beta_recall = scipy_stats.pearsonr(beta_vals, recall_vals)
-    results["beta_recall_r"] = round(float(r_beta_recall), 4)
-    results["beta_recall_p"] = round(float(p_beta_recall), 6)
-
-    r_stress_recall, p_stress_recall = scipy_stats.pearsonr(stress_vals, recall_vals)
-    results["stress_recall_r"] = round(float(r_stress_recall), 4)
-    results["stress_recall_p"] = round(float(p_stress_recall), 6)
-
-    # Bootstrapped indirect effect (same approach as H3)
+    # Bootstrapped indirect effect
     N_BOOT = 5000
     rng = np.random.default_rng(42)
     boot_indirect = np.empty(N_BOOT)
@@ -2117,9 +1876,6 @@ def test_h3b_stress_beta_recall(recall_dir, recall2_data, output_dir):
     results["b_path_beta_recall_ctrl_stress_and_condition_exploratory"] = \
         _condition_controlled_b_path(combined, stress_vals, beta_vals, recall_vals)
 
-    print(f"    Stress -> Beta: r={results['stress_beta_r']}, p={results['stress_beta_p']} "
-          f"(literature predicts positive r: {'matches' if results['direction_matches_literature'] else 'does NOT match'})")
-    print(f"    Beta -> Recall: r={results['beta_recall_r']}, p={results['beta_recall_p']}")
     print(f"    Bootstrap 95% CI on indirect effect: [{results['mediation']['boot_ci_95_low']}, "
           f"{results['mediation']['boot_ci_95_high']}]")
 
@@ -2129,7 +1885,6 @@ def test_h3b_stress_beta_recall(recall_dir, recall2_data, output_dir):
     print(f"    Saved -> {output_dir / 'h3b_stress_beta_recall.json'}")
 
     return results
-
 
 def test_h3c_stress_alpha_recall(recall_dir, recall2_data, output_dir):
    
@@ -2164,7 +1919,7 @@ def test_h3c_stress_alpha_recall(recall_dir, recall2_data, output_dir):
     n_obs = len(combined)
     results["n_subjects"] = n_obs
 
-    print("\n    -- Shapiro-Wilk Normality Checks --")
+    print("\n      Shapiro-Wilk Normality Checks  ")
     results["normality_shapiro_p"] = {
         "stress":  _shapiro_report("stress", stress_vals),
         "alpha":   _shapiro_report("alpha", alpha_vals),
@@ -2172,21 +1927,7 @@ def test_h3c_stress_alpha_recall(recall_dir, recall2_data, output_dir):
     }
     results["sensitivity"] = _sensitivity_power(n_obs)
 
-    r_stress_alpha, p_stress_alpha = scipy_stats.pearsonr(stress_vals, alpha_vals)
-    results["stress_alpha_r"] = round(float(r_stress_alpha), 4)
-    results["stress_alpha_p"] = round(float(p_stress_alpha), 6)
-    results["stress_alpha_significant"] = bool(p_stress_alpha < 0.05)
-    results["direction_matches_literature"] = bool(r_stress_alpha < 0)  # expect negative, like theta
-
-    r_alpha_recall, p_alpha_recall = scipy_stats.pearsonr(alpha_vals, recall_vals)
-    results["alpha_recall_r"] = round(float(r_alpha_recall), 4)
-    results["alpha_recall_p"] = round(float(p_alpha_recall), 6)
-
-    r_stress_recall, p_stress_recall = scipy_stats.pearsonr(stress_vals, recall_vals)
-    results["stress_recall_r"] = round(float(r_stress_recall), 4)
-    results["stress_recall_p"] = round(float(p_stress_recall), 6)
-
-    # Point-estimate mediation paths (same approach as H3)
+    # Point-estimate mediation paths
     try:
         Xa = np.column_stack([np.ones(n_obs), stress_vals])
         a = np.linalg.lstsq(Xa, alpha_vals, rcond=None)[0][1]
@@ -2235,9 +1976,6 @@ def test_h3c_stress_alpha_recall(recall_dir, recall2_data, output_dir):
     results["b_path_alpha_recall_ctrl_stress_and_condition_exploratory"] = \
         _condition_controlled_b_path(combined, stress_vals, alpha_vals, recall_vals)
 
-    print(f"    Stress -> Alpha: r={results['stress_alpha_r']}, p={results['stress_alpha_p']} "
-          f"(literature predicts negative r: {'matches' if results['direction_matches_literature'] else 'does NOT match'})")
-    print(f"    Alpha -> Recall: r={results['alpha_recall_r']}, p={results['alpha_recall_p']}")
     if "mediation" in results:
         print(f"    Bootstrap 95% CI on indirect effect: [{results['mediation']['boot_ci_95_low']}, "
               f"{results['mediation']['boot_ci_95_high']}]")
@@ -2249,20 +1987,11 @@ def test_h3c_stress_alpha_recall(recall_dir, recall2_data, output_dir):
 
     return results
 
-
 def _condition_colors():
-    """Consistent colorful palette used across all H1/H2 figures."""
     return {"control": "#4C72B0", "ENG-SWA": "#C44E52", "SWA-ENG": "#DD8452"}
 
 
 def plot_recall_boxplots_by_condition(output_dir):
-    """
-    Colorful boxplots of recall accuracy by condition (H1) - saved as TWO
-    separate figures, one for immediate recall (recall1) and one for delayed
-    recall (recall2). Same visual style as the Polysemous/Monosemic accuracy
-    boxplot (Figure 6): patch_artist boxes, distinct fill colors per group,
-    black whiskers/medians, jittered raw points on top.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
     colors = _condition_colors()
     order = ["control", "ENG-SWA", "SWA-ENG"]
@@ -2306,7 +2035,7 @@ def plot_recall_boxplots_by_condition(output_dir):
         ax.set_title(title, fontsize=13, fontweight="bold")
         ax.set_ylabel("Word-pairs recalled")
         ax.set_xlabel("Condition")
-        ax.grid(axis="y", linestyle="--", alpha=0.3)
+        ax.grid(axis="y", linestyle=" ", alpha=0.3)
         plt.tight_layout()
 
         plot_path = output_dir / fname
@@ -2319,10 +2048,7 @@ def plot_recall_boxplots_by_condition(output_dir):
 
 
 def plot_h2_boxplots(output_dir):
-    """
-    H2-focused boxplot: ENG-SWA vs SWA-ENG only, immediate and delayed recall
-    side by side. Same colorful patch_artist styling as Figure 6.
-    """
+    #ENG-SWA vs SWA-ENG only, immediate and delayed recall side by side
     output_dir.mkdir(parents=True, exist_ok=True)
     colors = _condition_colors()
     order = ["ENG-SWA", "SWA-ENG"]
@@ -2351,7 +2077,7 @@ def plot_h2_boxplots(output_dir):
 
         ax.set_title(title, fontsize=12, fontweight="bold")
         ax.set_ylabel("Word-pairs recalled")
-        ax.grid(axis="y", linestyle="--", alpha=0.3)
+        ax.grid(axis="y", linestyle=" ", alpha=0.3)
 
     plt.suptitle("Desirable Difficulty: ENG-SWA vs SWA-ENG (H2)", fontsize=13, fontweight="bold")
     plt.tight_layout()
@@ -2363,11 +2089,7 @@ def plot_h2_boxplots(output_dir):
 
 
 def plot_h1_h2_significance_heatmap(h1_r1, h1_r2, h2_r1, h2_r2, output_dir):
-    """
-    p-value heatmap in the same style as the 'Significance of Language Use
-    Context' figure: imshow + colorbar + annotated cell values, rows =
-    comparisons, columns = Immediate/Delayed recall.
-    """
+    
     output_dir.mkdir(parents=True, exist_ok=True)
 
     def _pbonf(res, label):
@@ -2420,11 +2142,7 @@ def plot_h1_h2_significance_heatmap(h1_r1, h1_r2, h2_r1, h2_r2, output_dir):
 
 
 def build_h1_h2_results_table(h1_r1, h1_r2, h2_r1, h2_r2, output_dir):
-    """
-    One consolidated, colour-coded results table (descriptives + inferential
-    stats for H1 and H2, both recall trials) saved as CSV and as a rendered
-    PNG table (green-shaded rows = significant after Bonferroni correction).
-    """
+   
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = []
 
@@ -2486,8 +2204,7 @@ def build_h1_h2_results_table(h1_r1, h1_r2, h2_r1, h2_r2, output_dir):
 
     if df.empty:
         return df
-
-    # ---- render as a coloured PNG table ----
+ 
     display_cols = ["Recall", "Hypothesis", "Comparison", "Mean (group)", "SD (group)",
                      "n", "ANOVA p", "t", "p_bonf", "Cohen's d", "Significant (Bonf)"]
     disp = df[display_cols].copy()
@@ -2526,17 +2243,6 @@ def build_h1_h2_results_table(h1_r1, h1_r2, h2_r1, h2_r2, output_dir):
 
 
 def build_h3_results_table(h3, h3b, h3c, output_dir):
-    """
-    One consolidated H3/H3b/H3c table: stress-power-recall mediation results
-    for theta (primary), beta and alpha (exploratory companions).
-
-    Saved as CSV (full precision, all columns - for your appendix/data
-    archive) and as a plain, thesis-style PNG table (APA-like: white
-    background, horizontal rules only, no fill colours, r and p combined
-    into one cell) that only keeps the columns a reader actually needs to
-    follow the mediation logic: the three paths (a, b, c) and the indirect
-    effect with its CI.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     def _row(res, band_label, power_key):
@@ -2620,8 +2326,6 @@ def build_h3_results_table(h3, h3b, h3c, output_dir):
     tbl.set_fontsize(10)
     tbl.scale(1, 2.2)
 
-    # Plain white table, APA-style: bold header + top/bottom rules only,
-    # a rule under the header row, no fill colour anywhere.
     for (row, col), cell in tbl.get_celld().items():
         cell.set_facecolor("white")
         cell.set_edgecolor("white")
@@ -2651,15 +2355,8 @@ def build_h3_results_table(h3, h3b, h3c, output_dir):
     print(f"    Saved simplified H3 results table (image) -> {png_path}")
     return df
 
-
 def _extract_full_channel_band_power(recall_dir, band, ch_names_wanted):
-    """
-    Like _extract_band_power, but returns power PER CHANNEL (averaged over
-    epochs and time) instead of averaged down to one frontal scalar. Used to
-    build the stress/recall correlation topomaps below.
-
-    Returns dict {subj_num: {ch_name: power_scalar}}.
-    """
+   
     out = {}
     if not recall_dir.exists():
         return out
@@ -2843,7 +2540,6 @@ def plot_h3_eeg_topomaps(recall_dir, output_dir, bands=("theta", "alpha", "beta"
     
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Grab one subject's epochs purely for channel positions/info (montage).
     info = None
     for subj_dir in sorted(recall_dir.iterdir()) if recall_dir.exists() else []:
         ep_path = subj_dir / "epochs_clean-epo.fif"
@@ -2869,8 +2565,6 @@ def plot_h3_eeg_topomaps(recall_dir, output_dir, bands=("theta", "alpha", "beta"
     for col, band in enumerate(bands):
         power_by_subj = _extract_full_channel_band_power(recall_dir, band, eeg_ch_names)
 
-        # Build subject x channel matrix, keeping only subjects with complete
-        # stress + recall2 + full channel coverage.
         subj_ids, stress_vals, recall_vals, power_rows = [], [], [], []
         for subj_num, meta in PARTICIPANT_METADATA.items():
             acc_r2 = meta.get("accuracy_recall2")
@@ -2981,14 +2675,14 @@ def plot_h3_channel_bars(recall_dir, output_dir, bands=("theta", "alpha", "beta"
         return None
 
     eeg_ch_names = info["ch_names"]
-    # Order channels by region (for consistent, readable bar grouping)
+    # Order channels by region
     order = sorted(range(len(eeg_ch_names)),
                     key=lambda i: (_REGION_ORDER.index(_channel_region(eeg_ch_names[i])),
                                     eeg_ch_names[i]))
     ch_sorted = [eeg_ch_names[i] for i in order]
     ch_colors = [_REGION_COLORS[_channel_region(ch)] for ch in ch_sorted]
 
-    SIG_THRESH = 0.25  # critical r at n=61, matches the value reported in-text
+    SIG_THRESH = 0.25  # critical r at n=61
 
     fig, axes = plt.subplots(2, len(bands), figsize=(4.5 * len(bands), 10), sharex=True)
     if len(bands) == 1:
@@ -3033,8 +2727,8 @@ def plot_h3_channel_bars(recall_dir, output_dir, bands=("theta", "alpha", "beta"
             y_pos = np.arange(len(ch_sorted))
             ax.barh(y_pos, r_vals, color=ch_colors, edgecolor="white", height=0.75)
             ax.axvline(0, color="black", linewidth=0.8)
-            ax.axvline(SIG_THRESH, color="grey", linewidth=1, linestyle="--")
-            ax.axvline(-SIG_THRESH, color="grey", linewidth=1, linestyle="--")
+            ax.axvline(SIG_THRESH, color="grey", linewidth=1, linestyle=" ")
+            ax.axvline(-SIG_THRESH, color="grey", linewidth=1, linestyle=" ")
             ax.set_yticks(y_pos)
             ax.set_yticklabels(ch_sorted, fontsize=7)
             ax.invert_yaxis()
@@ -3094,8 +2788,6 @@ def run_hypothesis_tests(recall_dir, output_dir):
     h2_recall2 = test_h2_language_order_interaction(recall2_data, tests_dir, recall_col="recall2")
     h2_recall1 = test_h2_language_order_interaction(recall1_data, tests_dir, recall_col="recall1")
 
-    # -- Figures: colorful boxplots + tables for H1/H2, same visual style as
-    #    the Figure 6 boxplot and the significance heatmap you already have.
     figures_dir = tests_dir / "figures"
     plot_recall_boxplots_by_condition(figures_dir)
     plot_h2_boxplots(figures_dir)
@@ -3115,10 +2807,7 @@ def run_hypothesis_tests(recall_dir, output_dir):
     h3c = test_h3c_stress_alpha_recall(recall2_dir if recall2_dir.exists() else recall_dir, recall2_data, tests_dir)
 
     build_h3_results_table(h3, h3b, h3c, figures_dir)
-    # Primary recommendation: per-channel bar chart (no spatial interpolation,
-    # honest about the null/non-significant channel-wise correlations).
     plot_h3_channel_bars(recall2_dir if recall2_dir.exists() else recall_dir, figures_dir)
-    # Kept as an optional supplementary visual, proportions fixed (sphere=0.095).
     plot_h3_eeg_topomaps(recall2_dir if recall2_dir.exists() else recall_dir, figures_dir)
 
     # Summary
@@ -3254,7 +2943,7 @@ if __name__ == "__main__":
         if _recall_dir.exists():
             regenerate_topomaps_from_saved(_recall_dir, _recall_name, OUTPUT_ROOT)
   
-    #Descriptive check: band power by condition, per recall session
+    # Descriptive check: band power by condition, per recall session
     
     _participant_metadata = load_participant_metadata()
     _band_power_csvs = {}
@@ -3266,7 +2955,6 @@ if __name__ == "__main__":
             _band_power_csvs[_recall_name] = OUTPUT_ROOT / f"band_power_by_condition_{_recall_name}.csv"
 
             # One combined figure per recall session (bands x conditions),
-            # instead of a separate file per band/condition.
             plot_band_power_by_condition_topomaps(_recall_dir, _recall_name,
                                                    _participant_metadata, OUTPUT_ROOT)
 
